@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Review Tool</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔍 Code Review Tool</h1>
+            <p class="subtitle">Analyze, Review, and Document Your Code</p>
+        </header>
+
+        <nav class="tabs">
+            <button class="tab-button active" data-tab="review">
+                <span class="tab-icon">📝</span>
+                Code Review
+            </button>
+            <button class="tab-button" data-tab="analysis">
+                <span class="tab-icon">📊</span>
+                Repo Analysis
+            </button>
+            <button class="tab-button" data-tab="docs">
+                <span class="tab-icon">📚</span>
+                Documentation
+            </button>
+        </nav>
+
+        <main class="content">
+            <!-- Code Review Tab -->
+            <div id="review" class="tab-content active">
+                <div class="section">
+                    <h2>Code Review</h2>
+                    <p class="description">Submit your code for comprehensive review and feedback</p>
+                    
+                    <div class="form-group">
+                        <label for="review-repo">Repository URL</label>
+                        <input type="text" id="review-repo" placeholder="https://github.com/username/repo">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="review-code">Code Snippet</label>
+                        <textarea id="review-code" rows="10" placeholder="Paste your code here..."></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="review-language">Programming Language</label>
+                        <select id="review-language">
+                            <option value="">Select Language</option>
+                            <option value="python">Python</option>
+                            <option value="javascript">JavaScript</option>
+                            <option value="java">Java</option>
+                            <option value="cpp">C++</option>
+                            <option value="csharp">C#</option>
+                            <option value="go">Go</option>
+                            <option value="rust">Rust</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="submitReview()">
+                        <span class="btn-icon">🚀</span>
+                        Submit for Review
+                    </button>
+
+                    <div id="review-results" class="results-container" style="display: none;">
+                        <h3>Review Results</h3>
+                        <div class="results-content"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Repo Analysis Tab -->
+            <div id="analysis" class="tab-content">
+                <div class="section">
+                    <h2>Repository Analysis</h2>
+                    <p class="description">Get detailed insights about your repository structure and metrics</p>
+                    
+                    <div class="form-group">
+                        <label for="analysis-repo">Repository URL</label>
+                        <input type="text" id="analysis-repo" placeholder="https://github.com/username/repo">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="analysis-branch">Branch (optional)</label>
+                        <input type="text" id="analysis-branch" placeholder="main">
+                    </div>
+
+                    <div class="checkbox-group">
+                        <label>
+                            <input type="checkbox" id="include-metrics" checked>
+                            Include Code Metrics
+                        </label>
+                        <label>
+                            <input type="checkbox" id="include-dependencies" checked>
+                            Analyze Dependencies
+                        </label>
+                        <label>
+                            <input type="checkbox" id="include-structure" checked>
+                            Project Structure
+                        </label>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="submitAnalysis()">
+                        <span class="btn-icon">🔬</span>
+                        Analyze Repository
+                    </button>
+
+                    <div id="analysis-results" class="results-container" style="display: none;">
+                        <h3>Analysis Results</h3>
+                        <div class="results-content"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Documentation Tab -->
+            <div id="docs" class="tab-content">
+                <div class="section">
+                    <h2>Documentation Generation</h2>
+                    <p class="description">Automatically generate comprehensive documentation for your code</p>
+                    
+                    <div class="form-group">
+                        <label for="docs-repo">Repository URL</label>
+                        <input type="text" id="docs-repo" placeholder="https://github.com/username/repo">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="docs-type">Documentation Type</label>
+                        <select id="docs-type">
+                            <option value="api">API Documentation</option>
+                            <option value="readme">README.md</option>
+                            <option value="full">Full Documentation</option>
+                            <option value="inline">Inline Comments</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="docs-format">Output Format</label>
+                        <select id="docs-format">
+                            <option value="markdown">Markdown</option>
+                            <option value="html">HTML</option>
+                            <option value="pdf">PDF</option>
+                            <option value="json">JSON</option>
+                        </select>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="generateDocs()">
+                        <span class="btn-icon">📄</span>
+                        Generate Documentation
+                    </button>
+
+                    <div id="docs-results" class="results-container" style="display: none;">
+                        <h3>Generated Documentation</h3>
+                        <div class="results-content"></div>
+                        <button class="btn btn-secondary" onclick="downloadDocs()">
+                            <span class="btn-icon">⬇️</span>
+                            Download
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>&copy; 2026 Code Review Tool | Built with ❤️ for developers</p>
+        </footer>
+    </div>
+
+    <div id="loading-overlay" class="loading-overlay" style="display: none;">
+        <div class="spinner"></div>
+        <p>Processing...</p>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
