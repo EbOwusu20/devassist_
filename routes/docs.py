@@ -3,16 +3,23 @@ Documentation endpoints for DevAssist API
 """
 import os
 import json
+import logging
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 try:
-    from google import genai
+    import google.generativeai as genai
     GENAI_AVAILABLE = True
-except ImportError:
+    logger.info("Google Generative AI library loaded successfully")
+except ImportError as e:
     GENAI_AVAILABLE = False
     genai = None
+    logger.warning(f"Google Generative AI library not available: {e}")
 
 from models import (
     GuidelineResponse, BestPractice, SearchRequest,
@@ -24,6 +31,10 @@ import mock_data
 
 # Get Gemini API key from environment
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if GEMINI_API_KEY:
+    logger.info("GEMINI_API_KEY found in environment")
+else:
+    logger.warning("GEMINI_API_KEY not found in environment")
 
 
 router = APIRouter(
@@ -44,14 +55,25 @@ def generate_docstring_with_gemini(code: str, language: str) -> dict:
         Dictionary with documentation
     """
     try:
+        logger.info(f"Starting documentation generation for {language} code")
+        
         if not GENAI_AVAILABLE:
-            raise ValueError("google-generativeai package not installed")
+            error_msg = "google-generativeai package not installed. Install with: pip install google-generativeai"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
         
         if not GEMINI_API_KEY:
-            raise ValueError("GEMINI_API_KEY not configured")
+            error_msg = "GEMINI_API_KEY not configured in environment variables"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
         
-        # Create the client
-        client = genai.Client(api_key=GEMINI_API_KEY)  # type: ignore
+        # Configure the API
+        logger.info("Configuring Gemini API")
+        genai.configure(api_key=GEMINI_API_KEY)  # type: ignore
+        
+        # Create the model
+        logger.info("Creating Gemini model instance")
+        model = genai.GenerativeModel('gemini-2.0-flash-exp')  # type: ignore
         
         # Create the prompt
         prompt = f"""You are an expert technical writer. Generate comprehensive documentation for the following {language} code.
@@ -89,10 +111,14 @@ Focus on:
 """
         
         # Generate response
-        response = client.models.generate_content(model='gemini-2.0-flash', contents=prompt)  # type: ignore
+        logger.info("Generating content with Gemini AI")
+        response = model.generate_content(prompt)  # type: ignore
         
         # Parse the response
+        logger.info("Parsing Gemini response")
         response_text = response.text.strip()  # type: ignore
+        
+        logger.debug(f"Raw response: {response_text[:200]}...")
         
         # Remove markdown code blocks if present
         if response_text.startswith("```json"):
@@ -105,14 +131,20 @@ Focus on:
         response_text = response_text.strip()
         
         # Parse JSON
+        logger.info("Parsing JSON response")
         documentation = json.loads(response_text)
         
         # Ensure powered_by is set
         documentation["powered_by"] = "IBM Bob + Gemini AI"
         
+        logger.info("Documentation generated successfully")
         return documentation
         
     except json.JSONDecodeError as e:
+        error_msg = f"JSON parsing error: {str(e)}"
+        logger.error(error_msg)
+        logger.error(f"Failed to parse response text: {response_text[:500] if 'response_text' in locals() else 'N/A'}")
+        
         # Fallback if JSON parsing fails
         return {
             "docstring": f"# Documentation for {language} code\n\nAI-generated documentation (format error)",
@@ -121,9 +153,19 @@ Focus on:
             "parameters": [],
             "returns": "Result of the operation",
             "examples": ["# See code for usage"],
-            "powered_by": "IBM Bob + Gemini AI"
+            "powered_by": "IBM Bob + Gemini AI",
+            "error": error_msg
         }
+    except AttributeError as e:
+        error_msg = f"API method error: {str(e)}. Check if google-generativeai library is up to date."
+        logger.error(error_msg)
+        logger.exception("Full traceback:")
+        raise ValueError(error_msg)
     except Exception as e:
+        error_msg = f"Unexpected error: {type(e).__name__}: {str(e)}"
+        logger.error(error_msg)
+        logger.exception("Full traceback:")
+        
         # Fallback for any other errors
         return {
             "docstring": f"# Documentation\n\nError generating documentation: {str(e)}",
@@ -132,7 +174,8 @@ Focus on:
             "parameters": [],
             "returns": "Unknown",
             "examples": ["# Documentation generation failed"],
-            "powered_by": "IBM Bob + Gemini AI"
+            "powered_by": "IBM Bob + Gemini AI",
+            "error": error_msg
         }
 
 
@@ -161,12 +204,32 @@ async def generate_documentation(
         Generated documentation including docstrings, README sections, and descriptions
     """
     try:
+        logger.info(f"Documentation generation request for language: {request.language.value}")
+        logger.debug(f"Code length: {len(request.code)} characters")
+        
         documentation = generate_docstring_with_gemini(request.code, request.language.value)
+        
+        # Check if there was an error in the documentation generation
+        if "error" in documentation:
+            logger.warning(f"Documentation generated with error: {documentation['error']}")
+        
         return documentation
-    except Exception as e:
+    except ValueError as e:
+        # Configuration or validation errors
+        error_msg = str(e)
+        logger.error(f"Configuration error: {error_msg}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate documentation: {str(e)}"
+            detail=f"Configuration error: {error_msg}"
+        )
+    except Exception as e:
+        # Unexpected errors
+        error_msg = f"{type(e).__name__}: {str(e)}"
+        logger.error(f"Unexpected error in generate_documentation: {error_msg}")
+        logger.exception("Full traceback:")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate documentation: {error_msg}"
         )
 
 

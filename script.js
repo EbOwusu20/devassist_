@@ -408,29 +408,92 @@ Powered by: IBM Bob + Gemini AI
 /**
  * Generates documentation for code
  */
+/**
+ * Generates documentation for a GitHub repository
+ */
 async function generateDocs() {
     const repo = document.getElementById('docs-repo').value;
-    const code = document.getElementById('review-code').value;
     const type = document.getElementById('docs-type').value;
     const format = document.getElementById('docs-format').value;
     const language = document.getElementById('review-language').value || 'python';
-    
+
     // Validation
-    if (!validateInput(code, 'code')) {
-        showNotification('Please enter code in the Code Review tab first', 'warning');
+    if (!validateInput(repo, 'url')) {
+        showNotification('Please enter a valid GitHub repository URL', 'warning');
         return;
     }
-    
+
     showLoading();
-    
+
     try {
+        // Extract owner and repo name from GitHub URL
+        // e.g. https://github.com/EbOwusu20/DevAssist
+        const cleanUrl = repo.replace('https://github.com/', '').split('/');
+        const owner = cleanUrl[0];
+        const repoName = cleanUrl[1];
+
+        if (!owner || !repoName) {
+            showNotification('Please enter a valid GitHub URL like https://github.com/username/repository', 'warning');
+            hideLoading();
+            return;
+        }
+
+        // Step 1 — Try to fetch README from GitHub API
+        let code = '';
+        showNotification('Fetching repository from GitHub...', 'info');
+
+        const githubRes = await fetch(
+            `https://api.github.com/repos/${owner}/${repoName}/readme`,
+            { headers: { Accept: 'application/vnd.github.v3.raw' } }
+        );
+
+        if (githubRes.ok) {
+            // README found — use it
+            code = await githubRes.text();
+            showNotification('Repository fetched! Generating documentation...', 'info');
+        } else {
+            // No README — fallback to file structure
+            showNotification('No README found. Fetching file structure...', 'info');
+
+            const treeRes = await fetch(
+                `https://api.github.com/repos/${owner}/${repoName}/git/trees/main?recursive=1`
+            );
+
+            if (treeRes.ok) {
+                const treeData = await treeRes.json();
+                const fileList = treeData.tree
+                    .map(f => f.path)
+                    .join('\n');
+                code = `Repository: ${repo}\n\nFile Structure:\n${fileList}`;
+            } else {
+                // Try master branch instead of main
+                const masterRes = await fetch(
+                    `https://api.github.com/repos/${owner}/${repoName}/git/trees/master?recursive=1`
+                );
+
+                if (masterRes.ok) {
+                    const masterData = await masterRes.json();
+                    const fileList = masterData.tree
+                        .map(f => f.path)
+                        .join('\n');
+                    code = `Repository: ${repo}\n\nFile Structure:\n${fileList}`;
+                } else {
+                    showNotification('Could not fetch repository. Make sure the URL is correct and the repo is public.', 'error');
+                    hideLoading();
+                    return;
+                }
+            }
+        }
+
+        // Step 2 — Send fetched content to backend for AI documentation
         const data = await makeAPICall('/docs/generate', {
             code: code,
             language: language
         });
-        
+
         displayDocsResults(data, type);
         showNotification('Documentation generated successfully!', 'success');
+
     } catch (error) {
         handleAPIError(error, 'generate documentation');
     } finally {
