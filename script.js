@@ -118,9 +118,8 @@ async function makeAPICall(endpoint, data) {
         const response = await fetch(`${API_CONFIG.baseURL}${endpoint}`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
-                // API key should be handled by backend session/authentication
-                // Never expose API keys in frontend code
+                'Content-Type': 'application/json',
+                'X-API-Key': 'dev-key-123'
             },
             body: JSON.stringify(data),
             signal: controller.signal
@@ -141,7 +140,6 @@ async function makeAPICall(endpoint, data) {
         throw error;
     }
 }
-
 /**
  * Displays results in a container with smooth scrolling
  * @param {string} containerId - The ID of the results container
