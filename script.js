@@ -1,8 +1,172 @@
+// Configuration
+const API_CONFIG = {
+    baseURL: 'https://devassist-api-6klc.onrender.com/api',
+    timeout: 30000
+};
+
+const MOCK_API_DELAY = 1500;
+
+// Utility Functions
+/**
+ * Sanitizes user input to prevent XSS attacks
+ * @param {string} input - The input string to sanitize
+ * @returns {string} Sanitized string
+ */
+function sanitizeInput(input) {
+    const div = document.createElement('div');
+    div.textContent = input;
+    return div.innerHTML;
+}
+
+/**
+ * Validates input based on type
+ * @param {string} value - The value to validate
+ * @param {string} type - The type of validation ('url', 'code', 'text')
+ * @returns {boolean} True if valid
+ */
+function validateInput(value, type) {
+    if (!value?.trim()) return false;
+    
+    switch(type) {
+        case 'url':
+            return /^https?:\/\/.+/.test(value);
+        case 'code':
+            return value.trim().length > 0;
+        case 'text':
+            return value.trim().length > 0;
+        default:
+            return true;
+    }
+}
+
+/**
+ * Shows a notification to the user
+ * @param {string} message - The message to display
+ * @param {string} type - The type of notification ('success', 'error', 'warning', 'info')
+ */
+function showNotification(message, type = 'info') {
+    // Create notification element if it doesn't exist
+    let notification = document.getElementById('notification');
+    if (!notification) {
+        notification = document.createElement('div');
+        notification.id = 'notification';
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 5px;
+            color: white;
+            font-weight: 500;
+            z-index: 10000;
+            max-width: 400px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            animation: slideIn 0.3s ease-out;
+        `;
+        document.body.appendChild(notification);
+    }
+    
+    // Set color based on type
+    const colors = {
+        success: '#10b981',
+        error: '#ef4444',
+        warning: '#f59e0b',
+        info: '#3b82f6'
+    };
+    
+    notification.style.backgroundColor = colors[type] || colors.info;
+    notification.textContent = message;
+    notification.style.display = 'block';
+    
+    // Auto-hide after 5 seconds
+    setTimeout(() => {
+        notification.style.display = 'none';
+    }, 5000);
+}
+
+/**
+ * Handles API errors consistently
+ * @param {Error} error - The error object
+ * @param {string} context - Context of where the error occurred
+ */
+function handleAPIError(error, context) {
+    console.error(`Error in ${context}:`, error);
+    
+    let message = `Failed to ${context}. `;
+    if (error.message.includes('API error')) {
+        message += 'Server returned an error. Please try again later.';
+    } else if (error.message.includes('Failed to fetch')) {
+        message += 'Network error. Please check your connection.';
+    } else {
+        message += error.message;
+    }
+    
+    showNotification(message, 'error');
+}
+
+/**
+ * Makes an authenticated API call
+ * @param {string} endpoint - The API endpoint
+ * @param {Object} data - The data to send
+ * @returns {Promise<Object>} The API response
+ */
+async function makeAPICall(endpoint, data) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), API_CONFIG.timeout);
+    
+    try {
+        const response = await fetch(`${API_CONFIG.baseURL}${endpoint}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+                // API key should be handled by backend session/authentication
+                // Never expose API keys in frontend code
+            },
+            body: JSON.stringify(data),
+            signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+            throw new Error(`API error: ${response.status} ${response.statusText}`);
+        }
+        
+        return await response.json();
+    } catch (error) {
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+            throw new Error('Request timeout. Please try again.');
+        }
+        throw error;
+    }
+}
+
+/**
+ * Displays results in a container with smooth scrolling
+ * @param {string} containerId - The ID of the results container
+ * @param {string} content - The formatted content to display
+ */
+function displayResults(containerId, content) {
+    const resultsContainer = document.getElementById(containerId);
+    const resultsContent = resultsContainer.querySelector('.results-content');
+    
+    resultsContent.textContent = content;
+    resultsContainer.style.display = 'block';
+    
+    // Smooth scroll to results
+    resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
 // Tab Switching Functionality
 document.addEventListener('DOMContentLoaded', function() {
     initializeTabs();
+    addKeyboardShortcuts();
 });
 
+/**
+ * Initializes tab switching functionality
+ */
 function initializeTabs() {
     const tabButtons = document.querySelectorAll('.tab-button');
     
@@ -14,15 +178,17 @@ function initializeTabs() {
     });
 }
 
+/**
+ * Switches to a specific tab
+ * @param {string} tabName - The name of the tab to switch to
+ */
 function switchTab(tabName) {
-    // Remove active class from all tabs and buttons
     const tabButtons = document.querySelectorAll('.tab-button');
     const tabContents = document.querySelectorAll('.tab-content');
     
     tabButtons.forEach(button => button.classList.remove('active'));
     tabContents.forEach(content => content.classList.remove('active'));
     
-    // Add active class to selected tab and button
     const selectedButton = document.querySelector(`[data-tab="${tabName}"]`);
     const selectedContent = document.getElementById(tabName);
     
@@ -32,74 +198,85 @@ function switchTab(tabName) {
     }
 }
 
+/**
+ * Adds keyboard shortcuts for better accessibility
+ */
+function addKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+        // Alt + 1/2/3 for tab switching
+        if (e.altKey && e.key >= '1' && e.key <= '3') {
+            e.preventDefault();
+            const tabs = ['code-review', 'repo-analysis', 'docs-generation'];
+            switchTab(tabs[parseInt(e.key) - 1]);
+        }
+    });
+}
+
 // Loading Overlay Functions
+/**
+ * Shows the loading overlay
+ */
 function showLoading() {
     document.getElementById('loading-overlay').style.display = 'flex';
 }
 
+/**
+ * Hides the loading overlay
+ */
 function hideLoading() {
     document.getElementById('loading-overlay').style.display = 'none';
 }
 
 // Code Review Functions
+/**
+ * Submits code for review
+ */
 async function submitReview() {
     const repo = document.getElementById('review-repo').value;
     const code = document.getElementById('review-code').value;
     const language = document.getElementById('review-language').value;
     
     // Validation
-    if (!code.trim()) {
-        alert('Please enter code to review');
+    if (!validateInput(code, 'code')) {
+        showNotification('Please enter code to review', 'warning');
         return;
     }
     
     if (!language) {
-        alert('Please select a programming language');
+        showNotification('Please select a programming language', 'warning');
         return;
     }
     
     showLoading();
     
     try {
-        // Make actual API call to backend
-        const response = await fetch('http://localhost:8000/api/review/submit', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-API-Key': 'dev-key-123' // Use your actual API key
-            },
-            body: JSON.stringify({
-                title: repo || 'Code Review',
-                code: code,
-                language: language,
-                description: 'Code review submission'
-            })
+        const data = await makeAPICall('/review/submit', {
+            title: sanitizeInput(repo) || 'Code Review',
+            code: code, // Code is sent to backend for processing
+            language: language,
+            description: 'Code review submission'
         });
         
-        if (!response.ok) {
-            throw new Error(`API error: ${response.status}`);
-        }
-        
-        const data = await response.json();
         displayReviewResults(data);
+        showNotification('Code review completed successfully!', 'success');
     } catch (error) {
-        console.error('Error submitting review:', error);
-        alert('Error submitting review: ' + error.message);
+        handleAPIError(error, 'submit code review');
     } finally {
         hideLoading();
     }
 }
 
+/**
+ * Displays code review results
+ * @param {Object} data - The review data from API
+ */
 function displayReviewResults(data) {
-    const resultsContainer = document.getElementById('review-results');
-    const resultsContent = resultsContainer.querySelector('.results-content');
+    let formattedResults = '';
     
-    // Check if AI analysis is available
     if (data.ai_analysis) {
         const analysis = data.ai_analysis;
         
-        // Format the results with AI analysis
-        let formattedResults = `AI-Powered Code Review Results
+        formattedResults = `AI-Powered Code Review Results
 ${'='.repeat(50)}
 
 Language: ${data.language}
@@ -125,11 +302,8 @@ ${analysis.suggestions.map((suggestion, index) => `${index + 1}. ${suggestion}`)
 ${'='.repeat(50)}
 Powered by: ${analysis.powered_by}
 `;
-        
-        resultsContent.textContent = formattedResults;
     } else {
-        // Fallback format if no AI analysis
-        let formattedResults = `Code Review Results
+        formattedResults = `Code Review Results
 ${'='.repeat(50)}
 
 Language: ${data.language}
@@ -139,16 +313,15 @@ Lines of Code: ${data.code.split('\n').length}
 
 Review created successfully!
 `;
-        resultsContent.textContent = formattedResults;
     }
     
-    resultsContainer.style.display = 'block';
-    
-    // Smooth scroll to results
-    resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    displayResults('review-results', formattedResults);
 }
 
 // Repository Analysis Functions
+/**
+ * Submits repository for analysis
+ */
 async function submitAnalysis() {
     const repo = document.getElementById('analysis-repo').value;
     const branch = document.getElementById('analysis-branch').value || 'main';
@@ -157,20 +330,20 @@ async function submitAnalysis() {
     const includeStructure = document.getElementById('include-structure').checked;
     
     // Validation
-    if (!repo.trim()) {
-        alert('Please enter a repository URL');
+    if (!validateInput(repo, 'url')) {
+        showNotification('Please enter a valid repository URL', 'warning');
         return;
     }
     
     showLoading();
     
     try {
-        // Simulate API call
+        // Note: This currently uses mock data. Replace with real API when available
         const response = await simulateAPICall({
-            endpoint: '/api/analyze',
+            endpoint: '/analyze',
             data: {
-                repository: repo,
-                branch: branch,
+                repository: sanitizeInput(repo),
+                branch: sanitizeInput(branch),
                 options: {
                     metrics: includeMetrics,
                     dependencies: includeDependencies,
@@ -180,19 +353,20 @@ async function submitAnalysis() {
         });
         
         displayAnalysisResults(response);
+        showNotification('Repository analysis completed!', 'success');
     } catch (error) {
-        alert('Error analyzing repository: ' + error.message);
+        handleAPIError(error, 'analyze repository');
     } finally {
         hideLoading();
     }
 }
 
+/**
+ * Displays repository analysis results
+ * @param {Object} data - The analysis data
+ */
 function displayAnalysisResults(data) {
-    const resultsContainer = document.getElementById('analysis-results');
-    const resultsContent = resultsContainer.querySelector('.results-content');
-    
-    // Format the results
-    let formattedResults = `Repository Analysis
+    const formattedResults = `Repository Analysis
 ${'='.repeat(50)}
 
 Repository: ${data.repository}
@@ -227,62 +401,49 @@ ${'='.repeat(50)}
 Powered by: IBM Bob + Gemini AI
 `;
     
-    resultsContent.textContent = formattedResults;
-    resultsContainer.style.display = 'block';
-    
-    // Smooth scroll to results
-    resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    displayResults('analysis-results', formattedResults);
 }
 
 // Documentation Generation Functions
+/**
+ * Generates documentation for code
+ */
 async function generateDocs() {
     const repo = document.getElementById('docs-repo').value;
-    const code = document.getElementById('review-code').value; // Reuse code from review tab
+    const code = document.getElementById('review-code').value;
     const type = document.getElementById('docs-type').value;
     const format = document.getElementById('docs-format').value;
     const language = document.getElementById('review-language').value || 'python';
     
     // Validation
-    if (!code.trim()) {
-        alert('Please enter code in the Code Review tab first');
+    if (!validateInput(code, 'code')) {
+        showNotification('Please enter code in the Code Review tab first', 'warning');
         return;
     }
     
     showLoading();
     
     try {
-        // Make actual API call to backend
-        const response = await fetch('http://localhost:8000/api/docs/generate', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-API-Key': 'dev-key-123' // Use your actual API key
-            },
-            body: JSON.stringify({
-                code: code,
-                language: language
-            })
+        const data = await makeAPICall('/docs/generate', {
+            code: code,
+            language: language
         });
         
-        if (!response.ok) {
-            throw new Error(`API error: ${response.status}`);
-        }
-        
-        const data = await response.json();
         displayDocsResults(data, type);
+        showNotification('Documentation generated successfully!', 'success');
     } catch (error) {
-        console.error('Error generating documentation:', error);
-        alert('Error generating documentation: ' + error.message);
+        handleAPIError(error, 'generate documentation');
     } finally {
         hideLoading();
     }
 }
 
+/**
+ * Displays documentation generation results
+ * @param {Object} data - The documentation data from API
+ * @param {string} type - The type of documentation
+ */
 function displayDocsResults(data, type) {
-    const resultsContainer = document.getElementById('docs-results');
-    const resultsContent = resultsContainer.querySelector('.results-content');
-    
-    // Format the results based on type
     let formattedResults = '';
     
     if (type === 'readme') {
@@ -354,36 +515,49 @@ Powered by: ${data.powered_by}
 `;
     }
     
-    resultsContent.textContent = formattedResults;
-    resultsContainer.style.display = 'block';
-    
-    // Smooth scroll to results
-    resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    displayResults('docs-results', formattedResults);
 }
 
+/**
+ * Downloads the generated documentation
+ */
 function downloadDocs() {
     const resultsContent = document.querySelector('#docs-results .results-content');
     const format = document.getElementById('docs-format').value;
     const content = resultsContent.textContent;
     
-    // Create blob and download
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `documentation.${format === 'markdown' ? 'md' : format}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    if (!content) {
+        showNotification('No documentation to download', 'warning');
+        return;
+    }
+    
+    try {
+        const blob = new Blob([content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `documentation.${format === 'markdown' ? 'md' : format}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        showNotification('Documentation downloaded successfully!', 'success');
+    } catch (error) {
+        handleAPIError(error, 'download documentation');
+    }
 }
 
-// Simulate API Call (Mock Function for analysis - kept for backward compatibility)
+// Mock API Function (for repository analysis until real API is implemented)
+/**
+ * Simulates an API call with mock data
+ * @param {Object} params - Parameters containing endpoint and data
+ * @returns {Promise<Object>} Mock response data
+ */
 function simulateAPICall({ endpoint, data }) {
     return new Promise((resolve) => {
         setTimeout(() => {
-            // Mock responses based on endpoint
-            if (endpoint === '/api/analyze') {
+            if (endpoint === '/analyze') {
                 resolve({
                     repository: data.repository,
                     branch: data.branch,
@@ -415,8 +589,8 @@ function simulateAPICall({ endpoint, data }) {
                     ] : null
                 });
             }
-        }, 1500); // Simulate network delay
+        }, MOCK_API_DELAY);
     });
 }
 
-// Made with Bob
+// Made with Bob - Enhanced Edition
