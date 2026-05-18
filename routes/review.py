@@ -3,15 +3,9 @@ Code review endpoints for DevAssist API
 """
 import os
 import json
+import requests
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List
-
-try:
-    import google.generativeai as genai
-    GENAI_AVAILABLE = True
-except ImportError:
-    GENAI_AVAILABLE = False
-    genai = None
 
 from models import (
     ReviewRequest, ReviewResponse, ReviewListItem,
@@ -33,7 +27,7 @@ router = APIRouter(
 
 def analyze_code_with_gemini(code: str, language: str) -> dict:
     """
-    Analyze code using Google Gemini AI
+    Analyze code using Google Gemini AI via HTTP API
     
     Args:
         code: Code to analyze
@@ -43,17 +37,8 @@ def analyze_code_with_gemini(code: str, language: str) -> dict:
         Dictionary with analysis results
     """
     try:
-        if not GENAI_AVAILABLE:
-            raise ValueError("google-generativeai package not installed")
-        
         if not GEMINI_API_KEY:
             raise ValueError("GEMINI_API_KEY not configured")
-        
-        # Configure the API
-        genai.configure(api_key=GEMINI_API_KEY)  # type: ignore
-        
-        # Create the model
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')  # type: ignore
         
         # Create the prompt
         prompt = f"""You are an expert code reviewer. Analyze the following {language} code and provide a detailed review.
@@ -90,11 +75,29 @@ Focus on:
 - Design patterns and architecture
 """
         
-        # Generate response
-        response = model.generate_content(prompt)  # type: ignore
+        # Make HTTP request to Gemini API
+        url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        
+        payload = {
+            "contents": [{
+                "parts": [{
+                    "text": prompt
+                }]
+            }]
+        }
+        
+        headers = {
+            "Content-Type": "application/json"
+        }
+        
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        response.raise_for_status()
         
         # Parse the response
-        response_text = response.text.strip()  # type: ignore
+        response_data = response.json()
+        
+        # Extract text from response
+        response_text = response_data["candidates"][0]["content"]["parts"][0]["text"].strip()
         
         # Remove markdown code blocks if present
         if response_text.startswith("```json"):
@@ -131,6 +134,25 @@ Focus on:
                 "Review error handling"
             ],
             "summary": "Code analysis completed with AI assistance. Some formatting issues in AI response.",
+            "powered_by": "IBM Bob + Gemini AI"
+        }
+    except requests.exceptions.RequestException as e:
+        # Fallback for HTTP errors
+        return {
+            "quality_score": 70,
+            "issues": [
+                {
+                    "severity": "Warning",
+                    "message": f"HTTP request error: {str(e)}",
+                    "line": 0,
+                    "suggestion": "Check API key and network connectivity"
+                }
+            ],
+            "suggestions": [
+                "Verify GEMINI_API_KEY is set correctly",
+                "Check network connectivity"
+            ],
+            "summary": "Unable to complete full AI analysis due to connection error.",
             "powered_by": "IBM Bob + Gemini AI"
         }
     except Exception as e:

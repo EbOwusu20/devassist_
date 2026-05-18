@@ -4,6 +4,7 @@ Documentation endpoints for DevAssist API
 import os
 import json
 import logging
+import requests
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from typing import List, Optional
 from pydantic import BaseModel, Field
@@ -11,15 +12,6 @@ from pydantic import BaseModel, Field
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-try:
-    import google.generativeai as genai
-    GENAI_AVAILABLE = True
-    logger.info("Google Generative AI library loaded successfully")
-except ImportError as e:
-    GENAI_AVAILABLE = False
-    genai = None
-    logger.warning(f"Google Generative AI library not available: {e}")
 
 from models import (
     GuidelineResponse, BestPractice, SearchRequest,
@@ -45,7 +37,7 @@ router = APIRouter(
 
 def generate_docstring_with_gemini(code: str, language: str) -> dict:
     """
-    Generate documentation using Google Gemini AI
+    Generate documentation using Google Gemini AI via HTTP API
     
     Args:
         code: Code to document
@@ -57,23 +49,10 @@ def generate_docstring_with_gemini(code: str, language: str) -> dict:
     try:
         logger.info(f"Starting documentation generation for {language} code")
         
-        if not GENAI_AVAILABLE:
-            error_msg = "google-generativeai package not installed. Install with: pip install google-generativeai"
-            logger.error(error_msg)
-            raise ValueError(error_msg)
-        
         if not GEMINI_API_KEY:
             error_msg = "GEMINI_API_KEY not configured in environment variables"
             logger.error(error_msg)
             raise ValueError(error_msg)
-        
-        # Configure the API
-        logger.info("Configuring Gemini API")
-        genai.configure(api_key=GEMINI_API_KEY)  # type: ignore
-        
-        # Create the model
-        logger.info("Creating Gemini model instance")
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')  # type: ignore
         
         # Create the prompt
         prompt = f"""You are an expert technical writer. Generate comprehensive documentation for the following {language} code.
@@ -110,13 +89,31 @@ Focus on:
 - Complete parameter and return documentation
 """
         
-        # Generate response
-        logger.info("Generating content with Gemini AI")
-        response = model.generate_content(prompt)  # type: ignore
+        # Make HTTP request to Gemini API
+        logger.info("Sending request to Gemini API")
+        url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        
+        payload = {
+            "contents": [{
+                "parts": [{
+                    "text": prompt
+                }]
+            }]
+        }
+        
+        headers = {
+            "Content-Type": "application/json"
+        }
+        
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        response.raise_for_status()
         
         # Parse the response
         logger.info("Parsing Gemini response")
-        response_text = response.text.strip()  # type: ignore
+        response_data = response.json()
+        
+        # Extract text from response
+        response_text = response_data["candidates"][0]["content"]["parts"][0]["text"].strip()
         
         logger.debug(f"Raw response: {response_text[:200]}...")
         
@@ -156,11 +153,22 @@ Focus on:
             "powered_by": "IBM Bob + Gemini AI",
             "error": error_msg
         }
-    except AttributeError as e:
-        error_msg = f"API method error: {str(e)}. Check if google-generativeai library is up to date."
+    except requests.exceptions.RequestException as e:
+        error_msg = f"HTTP request error: {str(e)}"
         logger.error(error_msg)
         logger.exception("Full traceback:")
-        raise ValueError(error_msg)
+        
+        # Fallback for HTTP errors
+        return {
+            "docstring": f"# Documentation\n\nError connecting to Gemini API: {str(e)}",
+            "readme_section": f"## Code Section\n\nDocumentation generation encountered a connection error.",
+            "plain_english": "Unable to generate documentation. Please check API key and network connectivity.",
+            "parameters": [],
+            "returns": "Unknown",
+            "examples": ["# Documentation generation failed"],
+            "powered_by": "IBM Bob + Gemini AI",
+            "error": error_msg
+        }
     except Exception as e:
         error_msg = f"Unexpected error: {type(e).__name__}: {str(e)}"
         logger.error(error_msg)
