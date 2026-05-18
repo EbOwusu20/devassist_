@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List
 
 try:
-    from google import genai
+    import google.generativeai as genai
     GENAI_AVAILABLE = True
 except ImportError:
     GENAI_AVAILABLE = False
@@ -49,8 +49,11 @@ def analyze_code_with_gemini(code: str, language: str) -> dict:
         if not GEMINI_API_KEY:
             raise ValueError("GEMINI_API_KEY not configured")
         
-        # Create the client
-        client = genai.Client(api_key=GEMINI_API_KEY)  # type: ignore
+        # Configure the API
+        genai.configure(api_key=GEMINI_API_KEY)  # type: ignore
+        
+        # Create the model
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')  # type: ignore
         
         # Create the prompt
         prompt = f"""You are an expert code reviewer. Analyze the following {language} code and provide a detailed review.
@@ -88,7 +91,7 @@ Focus on:
 """
         
         # Generate response
-        response = client.models.generate_content(model='gemini-1.5-flash', contents=prompt)  # type: ignore
+        response = model.generate_content(prompt)  # type: ignore
         
         # Parse the response
         response_text = response.text.strip()  # type: ignore

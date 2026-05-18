@@ -73,7 +73,7 @@ def generate_docstring_with_gemini(code: str, language: str) -> dict:
         
         # Create the model
         logger.info("Creating Gemini model instance")
-        model = genai.GenerativeModel('gemini-1.5-flash')  # type: ignore
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')  # type: ignore
         
         # Create the prompt
         prompt = f"""You are an expert technical writer. Generate comprehensive documentation for the following {language} code.
