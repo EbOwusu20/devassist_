@@ -88,7 +88,7 @@ Focus on:
 """
         
         # Generate response
-        response = client.models.generate_content(model='gemini-2.0-flash', contents=prompt)  # type: ignore
+        response = client.models.generate_content(model='gemini-1.5-flash', contents=prompt)  # type: ignore
         
         # Parse the response
         response_text = response.text.strip()  # type: ignore
