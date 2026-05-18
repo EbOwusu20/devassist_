@@ -4,10 +4,10 @@ Documentation endpoints for DevAssist API
 import os
 import json
 import logging
-import requests
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from typing import List, Optional
 from pydantic import BaseModel, Field
+from groq import Groq
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -21,12 +21,12 @@ from auth import verify_api_key
 import mock_data
 
 
-# Get Gemini API key from environment
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if GEMINI_API_KEY:
-    logger.info("GEMINI_API_KEY found in environment")
+# Get Groq API key from environment
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+if GROQ_API_KEY:
+    logger.info("GROQ_API_KEY found in environment")
 else:
-    logger.warning("GEMINI_API_KEY not found in environment")
+    logger.warning("GROQ_API_KEY not found in environment")
 
 
 router = APIRouter(
@@ -37,7 +37,7 @@ router = APIRouter(
 
 def generate_docstring_with_gemini(code: str, language: str) -> dict:
     """
-    Generate documentation using Google Gemini AI via HTTP API
+    Generate documentation using Groq AI
     
     Args:
         code: Code to document
@@ -49,10 +49,13 @@ def generate_docstring_with_gemini(code: str, language: str) -> dict:
     try:
         logger.info(f"Starting documentation generation for {language} code")
         
-        if not GEMINI_API_KEY:
-            error_msg = "GEMINI_API_KEY not configured in environment variables"
+        if not GROQ_API_KEY:
+            error_msg = "GROQ_API_KEY not configured in environment variables"
             logger.error(error_msg)
             raise ValueError(error_msg)
+        
+        # Initialize Groq client
+        client = Groq(api_key=os.getenv('GROQ_API_KEY'))
         
         # Create the prompt
         prompt = f"""You are an expert technical writer. Generate comprehensive documentation for the following {language} code.
@@ -79,7 +82,7 @@ Please provide your documentation in the following JSON format (respond ONLY wit
         "<usage example 1>",
         "<usage example 2>"
     ],
-    "powered_by": "IBM Bob + Gemini AI"
+    "powered_by": "IBM Bob + Groq AI"
 }}
 
 Focus on:
@@ -89,31 +92,20 @@ Focus on:
 - Complete parameter and return documentation
 """
         
-        # Make HTTP request to Gemini API
-        logger.info("Sending request to Gemini API")
-        url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-        
-        payload = {
-            "contents": [{
-                "parts": [{
-                    "text": prompt
-                }]
-            }]
-        }
-        
-        headers = {
-            "Content-Type": "application/json"
-        }
-        
-        response = requests.post(url, json=payload, headers=headers, timeout=30)
-        response.raise_for_status()
-        
-        # Parse the response
-        logger.info("Parsing Gemini response")
-        response_data = response.json()
+        # Make API call to Groq
+        logger.info("Sending request to Groq API")
+        response = client.chat.completions.create(
+            model='llama3-8b-8192',
+            messages=[{'role': 'user', 'content': prompt}],
+            max_tokens=1000
+        )
         
         # Extract text from response
-        response_text = response_data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        response_text = response.choices[0].message.content
+        if response_text:
+            response_text = response_text.strip()
+        else:
+            response_text = ""
         
         logger.debug(f"Raw response: {response_text[:200]}...")
         
@@ -132,7 +124,7 @@ Focus on:
         documentation = json.loads(response_text)
         
         # Ensure powered_by is set
-        documentation["powered_by"] = "IBM Bob + Gemini AI"
+        documentation["powered_by"] = "IBM Bob + Groq AI"
         
         logger.info("Documentation generated successfully")
         return documentation
@@ -140,7 +132,7 @@ Focus on:
     except json.JSONDecodeError as e:
         error_msg = f"JSON parsing error: {str(e)}"
         logger.error(error_msg)
-        logger.error(f"Failed to parse response text: {response_text[:500] if 'response_text' in locals() else 'N/A'}")
+        logger.error(f"Failed to parse response text: {response_text[:500] if 'response_text' in locals() and response_text else 'N/A'}")
         
         # Fallback if JSON parsing fails
         return {
@@ -150,23 +142,7 @@ Focus on:
             "parameters": [],
             "returns": "Result of the operation",
             "examples": ["# See code for usage"],
-            "powered_by": "IBM Bob + Gemini AI",
-            "error": error_msg
-        }
-    except requests.exceptions.RequestException as e:
-        error_msg = f"HTTP request error: {str(e)}"
-        logger.error(error_msg)
-        logger.exception("Full traceback:")
-        
-        # Fallback for HTTP errors
-        return {
-            "docstring": f"# Documentation\n\nError connecting to Gemini API: {str(e)}",
-            "readme_section": f"## Code Section\n\nDocumentation generation encountered a connection error.",
-            "plain_english": "Unable to generate documentation. Please check API key and network connectivity.",
-            "parameters": [],
-            "returns": "Unknown",
-            "examples": ["# Documentation generation failed"],
-            "powered_by": "IBM Bob + Gemini AI",
+            "powered_by": "IBM Bob + Groq AI",
             "error": error_msg
         }
     except Exception as e:
@@ -182,7 +158,7 @@ Focus on:
             "parameters": [],
             "returns": "Unknown",
             "examples": ["# Documentation generation failed"],
-            "powered_by": "IBM Bob + Gemini AI",
+            "powered_by": "IBM Bob + Groq AI",
             "error": error_msg
         }
 

@@ -3,9 +3,9 @@ Code review endpoints for DevAssist API
 """
 import os
 import json
-import requests
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List
+from groq import Groq
 
 from models import (
     ReviewRequest, ReviewResponse, ReviewListItem,
@@ -15,8 +15,8 @@ from auth import verify_api_key
 import mock_data
 
 
-# Get Gemini API key from environment
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# Get Groq API key from environment
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 
 router = APIRouter(
@@ -27,7 +27,7 @@ router = APIRouter(
 
 def analyze_code_with_gemini(code: str, language: str) -> dict:
     """
-    Analyze code using Google Gemini AI via HTTP API
+    Analyze code using Groq AI
     
     Args:
         code: Code to analyze
@@ -37,8 +37,11 @@ def analyze_code_with_gemini(code: str, language: str) -> dict:
         Dictionary with analysis results
     """
     try:
-        if not GEMINI_API_KEY:
-            raise ValueError("GEMINI_API_KEY not configured")
+        if not GROQ_API_KEY:
+            raise ValueError("GROQ_API_KEY not configured")
+        
+        # Initialize Groq client
+        client = Groq(api_key=os.getenv('GROQ_API_KEY'))
         
         # Create the prompt
         prompt = f"""You are an expert code reviewer. Analyze the following {language} code and provide a detailed review.
@@ -64,7 +67,7 @@ Please provide your analysis in the following JSON format (respond ONLY with val
         "<improvement suggestion 2>"
     ],
     "summary": "<overall summary of code quality>",
-    "powered_by": "IBM Bob + Gemini AI"
+    "powered_by": "IBM Bob + Groq AI"
 }}
 
 Focus on:
@@ -75,29 +78,19 @@ Focus on:
 - Design patterns and architecture
 """
         
-        # Make HTTP request to Gemini API
-        url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-        
-        payload = {
-            "contents": [{
-                "parts": [{
-                    "text": prompt
-                }]
-            }]
-        }
-        
-        headers = {
-            "Content-Type": "application/json"
-        }
-        
-        response = requests.post(url, json=payload, headers=headers, timeout=30)
-        response.raise_for_status()
-        
-        # Parse the response
-        response_data = response.json()
+        # Make API call to Groq
+        response = client.chat.completions.create(
+            model='llama3-8b-8192',
+            messages=[{'role': 'user', 'content': prompt}],
+            max_tokens=1000
+        )
         
         # Extract text from response
-        response_text = response_data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        response_text = response.choices[0].message.content
+        if response_text:
+            response_text = response_text.strip()
+        else:
+            response_text = ""
         
         # Remove markdown code blocks if present
         if response_text.startswith("```json"):
@@ -113,7 +106,7 @@ Focus on:
         analysis = json.loads(response_text)
         
         # Ensure powered_by is set
-        analysis["powered_by"] = "IBM Bob + Gemini AI"
+        analysis["powered_by"] = "IBM Bob + Groq AI"
         
         return analysis
         
@@ -134,26 +127,7 @@ Focus on:
                 "Review error handling"
             ],
             "summary": "Code analysis completed with AI assistance. Some formatting issues in AI response.",
-            "powered_by": "IBM Bob + Gemini AI"
-        }
-    except requests.exceptions.RequestException as e:
-        # Fallback for HTTP errors
-        return {
-            "quality_score": 70,
-            "issues": [
-                {
-                    "severity": "Warning",
-                    "message": f"HTTP request error: {str(e)}",
-                    "line": 0,
-                    "suggestion": "Check API key and network connectivity"
-                }
-            ],
-            "suggestions": [
-                "Verify GEMINI_API_KEY is set correctly",
-                "Check network connectivity"
-            ],
-            "summary": "Unable to complete full AI analysis due to connection error.",
-            "powered_by": "IBM Bob + Gemini AI"
+            "powered_by": "IBM Bob + Groq AI"
         }
     except Exception as e:
         # Fallback for any other errors
@@ -168,11 +142,11 @@ Focus on:
                 }
             ],
             "suggestions": [
-                "Verify GEMINI_API_KEY is set correctly",
+                "Verify GROQ_API_KEY is set correctly",
                 "Check network connectivity"
             ],
             "summary": "Unable to complete full AI analysis. Using fallback analysis.",
-            "powered_by": "IBM Bob + Gemini AI"
+            "powered_by": "IBM Bob + Groq AI"
         }
 
 
