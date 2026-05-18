@@ -95,7 +95,7 @@ Focus on:
         # Make API call to Groq
         logger.info("Sending request to Groq API")
         response = client.chat.completions.create(
-            model='llama3-8b-8192',
+            model='llama-3.1-8b-instant',
             messages=[{'role': 'user', 'content': prompt}],
             max_tokens=1000
         )
